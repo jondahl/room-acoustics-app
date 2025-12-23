@@ -61,47 +61,6 @@ const calcPressureAtPosition = (x, y, z, mode, room, wallOpenings) => {
   return pressure;
 };
 
-const calcDipoleExcitation = (speaker, mode, room) => {
-  const { x, y, z, orientation } = speaker;
-  const { length, width, height } = room;
-  const { n, m, l, freq } = mode;
-  
-  // Base pressure at position
-  let pX = n > 0 ? Math.cos(n * Math.PI * x / length) : 1;
-  let pY = m > 0 ? Math.cos(m * Math.PI * y / width) : 1;
-  let pZ = l > 0 ? Math.cos(l * Math.PI * z / height) : 1;
-  let basePressure = Math.abs(pX * pY * pZ);
-  
-  // Dipole cancellation based on orientation
-  const wavelength = SPEED_OF_SOUND / freq;
-  const dipoleDepth = 1.5; // ft, approximate
-  const phaseDiff = (dipoleDepth / wavelength) * 360;
-  
-  let cancellationFactor = 1;
-  
-  // orientation: 0 = facing listener (along length), 90 = facing sideways
-  const orientRad = (orientation || 0) * Math.PI / 180;
-  
-  // Length modes affected when facing along length
-  if (n > 0) {
-    const lengthEffect = Math.abs(Math.cos(orientRad));
-    cancellationFactor *= 1 - lengthEffect * (1 - Math.abs(Math.cos(phaseDiff * Math.PI / 360)));
-  }
-  
-  // Width modes affected when facing sideways
-  if (m > 0) {
-    const widthEffect = Math.abs(Math.sin(orientRad));
-    cancellationFactor *= 1 - widthEffect * (1 - Math.abs(Math.cos(phaseDiff * Math.PI / 360)));
-  }
-  
-  // Height modes less affected
-  if (l > 0) {
-    cancellationFactor *= 0.9;
-  }
-  
-  return basePressure * cancellationFactor;
-};
-
 const calcSBIR = (speaker, room) => {
   const { x, y, z } = speaker;
   const { length, width, height } = room;
@@ -125,21 +84,19 @@ const calcSBIR = (speaker, room) => {
 };
 
 const calcBoundaryGain = (speaker, room, wallOpenings) => {
-  const { x, y, z, type } = speaker;
+  const { x, y, z } = speaker;
   const { length, width, height } = room;
   const threshold = 2;
-  
+  const gainPerBoundary = 3;
+
   let gain = 0;
-  const isMonopole = type !== 'Large Dipole';
-  const gainPerBoundary = isMonopole ? 3 : 1.5;
-  
   if (z < threshold) gain += gainPerBoundary; // floor
   if (height - z < threshold) gain += gainPerBoundary; // ceiling
   if (x < threshold) gain += gainPerBoundary * (1 - wallOpenings.front / 100);
   if (length - x < threshold) gain += gainPerBoundary * (1 - wallOpenings.rear / 100);
   if (y < threshold) gain += gainPerBoundary * (1 - wallOpenings.left / 100);
   if (width - y < threshold) gain += gainPerBoundary * (1 - wallOpenings.right / 100);
-  
+
   return gain;
 };
 
@@ -163,54 +120,6 @@ const calcMonopoleCouplingForFreqResponse = (x, y, z, mode, room, wallOpenings) 
   let coupling = pX * pY * pZ;
 
   // Apply wall opening reductions (reduces mode strength when walls are open)
-  if (m > 0) {
-    const leftReduction = 1 - wallOpenings.left / 100;
-    const rightReduction = 1 - wallOpenings.right / 100;
-    coupling *= (leftReduction + rightReduction) / 2;
-  }
-  if (n > 0) {
-    const frontReduction = 1 - wallOpenings.front / 100;
-    const rearReduction = 1 - wallOpenings.rear / 100;
-    coupling *= (frontReduction + rearReduction) / 2;
-  }
-
-  return coupling;
-};
-
-// Dipole coupling: gradient of pressure field (dipoles couple to velocity, not pressure)
-const calcDipoleCouplingForFreqResponse = (speaker, mode, room, wallOpenings) => {
-  const { x, y, z, orientation } = speaker;
-  const { n, m, l } = mode;
-  const { length, width, height } = room;
-
-  const orientRad = (orientation || 0) * Math.PI / 180;
-
-  // Gradient components (spatial derivative of pressure eigenfunction)
-  // gradX = ∂p/∂x = -(nπ/L) * sin(nπx/L) * cos(mπy/W) * cos(lπz/H)
-  const gradX = n > 0
-    ? -(n * Math.PI / length) * Math.sin(n * Math.PI * x / length)
-      * (m > 0 ? Math.cos(m * Math.PI * y / width) : 1)
-      * (l > 0 ? Math.cos(l * Math.PI * z / height) : 1)
-    : 0;
-
-  // gradY = ∂p/∂y = -(mπ/W) * cos(nπx/L) * sin(mπy/W) * cos(lπz/H)
-  const gradY = m > 0
-    ? -(m * Math.PI / width) * (n > 0 ? Math.cos(n * Math.PI * x / length) : 1)
-      * Math.sin(m * Math.PI * y / width)
-      * (l > 0 ? Math.cos(l * Math.PI * z / height) : 1)
-    : 0;
-
-  // gradZ for future vertical dipole support (currently unused)
-  // const gradZ = l > 0
-  //   ? -(l * Math.PI / height) * (n > 0 ? Math.cos(n * Math.PI * x / length) : 1)
-  //     * (m > 0 ? Math.cos(m * Math.PI * y / width) : 1)
-  //     * Math.sin(l * Math.PI * z / height)
-  //   : 0;
-
-  // Dipole coupling based on horizontal orientation
-  let coupling = Math.cos(orientRad) * gradX + Math.sin(orientRad) * gradY;
-
-  // Apply wall opening reductions
   if (m > 0) {
     const leftReduction = 1 - wallOpenings.left / 100;
     const rightReduction = 1 - wallOpenings.right / 100;
@@ -315,22 +224,10 @@ const SpeakerInput = ({ speaker, index, onChange, onRemove }) => (
           <option value="Small Ported">Small Ported</option>
           <option value="Large Sealed">Large Sealed</option>
           <option value="Large Ported">Large Ported</option>
-          <option value="Large Dipole">Large Dipole</option>
           <option value="Subwoofer Sealed">Subwoofer Sealed</option>
           <option value="Subwoofer Ported">Subwoofer Ported</option>
         </select>
       </div>
-      {speaker.type === 'Large Dipole' && (
-        <NumberInput
-          label="Orientation (0=facing rear)"
-          value={speaker.orientation || 0}
-          onChange={v => onChange(index, { ...speaker, orientation: v })}
-          unit="°"
-          step={15}
-          min={0}
-          max={360}
-        />
-      )}
     </div>
   </div>
 );
@@ -443,12 +340,7 @@ export default function RoomAcousticsApp() {
       );
       
       const speakerExcitation = speakers.map(speaker => {
-        let excitation;
-        if (speaker.type === 'Large Dipole') {
-          excitation = calcDipoleExcitation(speaker, mode, room);
-        } else {
-          excitation = calcPressureAtPosition(speaker.x, speaker.y, speaker.z, mode, room, wallOpenings);
-        }
+        const excitation = calcPressureAtPosition(speaker.x, speaker.y, speaker.z, mode, room, wallOpenings);
         // Apply power offset
         const powerFactor = Math.pow(10, speaker.powerOffset / 20);
         return { name: speaker.name, excitation, weighted: excitation * powerFactor };
@@ -508,12 +400,7 @@ export default function RoomAcousticsApp() {
       // Calculate total source coupling (sum all speakers, signed)
       let sourceCoupling = 0;
       for (const speaker of speakers) {
-        let coupling;
-        if (speaker.type === 'Large Dipole') {
-          coupling = calcDipoleCouplingForFreqResponse(speaker, mode, room, wallOpenings);
-        } else {
-          coupling = calcMonopoleCouplingForFreqResponse(speaker.x, speaker.y, speaker.z, mode, room, wallOpenings);
-        }
+        const coupling = calcMonopoleCouplingForFreqResponse(speaker.x, speaker.y, speaker.z, mode, room, wallOpenings);
         // Apply power offset
         const powerFactor = Math.pow(10, (speaker.powerOffset || 0) / 20);
         sourceCoupling += coupling * powerFactor;
@@ -622,8 +509,7 @@ ${speakers.map(s => `### ${s.name}
 - Position: (${s.x.toFixed(1)}', ${s.y.toFixed(1)}', ${s.z.toFixed(1)}')
 - Type: ${s.type}
 - Power offset: ${s.powerOffset} dB
-- Boundary gain: +${speakerAnalysis.find(sa => sa.name === s.name)?.boundaryGain.toFixed(1) || 0} dB
-${s.type === 'Large Dipole' ? `- Orientation: ${s.orientation}°` : ''}`).join('\n\n')}
+- Boundary gain: +${speakerAnalysis.find(sa => sa.name === s.name)?.boundaryGain.toFixed(1) || 0} dB`).join('\n\n')}
 
 ## EQ / Room Correction Availability
 - Main speakers: ${eqAvailable.main ? 'YES - DSP/room correction available' : 'NO - positioning and acoustic treatment only'}
@@ -1383,9 +1269,7 @@ Based on this data, please provide:
             {speakers.map((speaker, i) => (
               <div
                 key={i}
-                className={`absolute w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transform -translate-x-1/2 -translate-y-1/2 ${
-                  speaker.type === 'Large Dipole' ? 'bg-purple-600 border-purple-300' : 'bg-green-600 border-green-300'
-                }`}
+                className="absolute w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transform -translate-x-1/2 -translate-y-1/2 bg-green-600 border-green-300"
                 style={{
                   left: `${(speaker.y / room.width) * 100}%`,
                   top: `${(speaker.x / room.length) * 100}%`,
@@ -1411,9 +1295,7 @@ Based on this data, please provide:
             <div className="absolute bottom-2 right-2 text-xs space-y-1 bg-gray-800/80 p-2 rounded">
               {speakers.map((speaker, i) => (
                 <div key={i} className="flex items-center gap-1">
-                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    speaker.type === 'Large Dipole' ? 'bg-purple-600' : 'bg-green-600'
-                  }`}>{i + 1}</div>
+                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold bg-green-600">{i + 1}</div>
                   <span>{speaker.name}</span>
                 </div>
               ))}
