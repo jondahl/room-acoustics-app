@@ -571,7 +571,15 @@ Based on this data, please provide:
       }
     }
   }, []);
-  
+
+  // Sync state to URL
+  useEffect(() => {
+    const compressed = toUrlSafe(serializeCompact());
+    const url = new URL(window.location.href.split('?')[0]);
+    url.searchParams.set('c', compressed);
+    window.history.replaceState(null, '', url.toString());
+  }, [room, wallOpenings, listener, speakers, eqAvailable, crossoverFreq]);
+
   const deserializeState = (jsonStr) => {
     try {
       const data = JSON.parse(jsonStr);
