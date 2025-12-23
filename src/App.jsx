@@ -195,7 +195,7 @@ const SpeakerInput = ({ speaker, index, onChange, onRemove }) => (
         unit="ft"
       />
       <NumberInput
-        label="Height"
+        label="Woofer Height"
         value={speaker.z}
         onChange={v => onChange(index, { ...speaker, z: v })}
         unit="ft"
@@ -298,6 +298,9 @@ export default function RoomAcousticsApp() {
     main: false,
     sub: true,
   });
+
+  // Crossover frequency
+  const [crossoverFreq, setCrossoverFreq] = useState(null);
   
   const updateSpeaker = (index, newSpeaker) => {
     const newSpeakers = [...speakers];
@@ -452,6 +455,10 @@ ${s.type === 'Large Dipole' ? `- Orientation: ${s.orientation}°` : ''}`).join('
 ${!eqAvailable.main && !eqAvailable.sub ? '\n**Note:** With no EQ available, recommendations should focus entirely on positioning, speaker selection, and acoustic treatment.' : ''}
 ${eqAvailable.sub && !eqAvailable.main ? '\n**Note:** Since only subwoofer EQ is available, main speaker issues must be addressed through positioning. Consider crossover frequency carefully — problems in the crossover region may be difficult to address.' : ''}
 
+## Crossover Frequency
+- Crossover between small speakers and subwoofers: ${crossoverFreq ? `${crossoverFreq} Hz` : 'Not specified'}
+- Note: Large speakers are assumed to be full-range (no high-pass filter applied)
+
 ## Modal Analysis at Listening Position (modes up to 150 Hz)
 
 ### Critical Nulls (< 15% pressure at LP, axial modes only)
@@ -505,6 +512,7 @@ Based on this data, please provide:
       listener,
       speakers,
       eqAvailable,
+      crossoverFreq,
     }, null, 2);
   };
   
@@ -516,6 +524,7 @@ Based on this data, please provide:
       l: [listener.x, listener.y, listener.z],
       s: speakers.map(s => [s.name, s.x, s.y, s.z, s.type, s.orientation || 0, s.powerOffset || 0]),
       e: [eqAvailable.main ? 1 : 0, eqAvailable.sub ? 1 : 0],
+      c: crossoverFreq,
     });
   };
   
@@ -530,6 +539,7 @@ Based on this data, please provide:
       powerOffset: s[6] || 0,
     })));
     if (data.e) setEqAvailable({ main: data.e[0] === 1, sub: data.e[1] === 1 });
+    if (data.c) setCrossoverFreq(data.c);
   };
   
   // URL-safe base64
@@ -578,6 +588,7 @@ Based on this data, please provide:
       if (data.listener) setListener(data.listener);
       if (data.speakers) setSpeakers(data.speakers);
       if (data.eqAvailable) setEqAvailable(data.eqAvailable);
+      if (data.crossoverFreq) setCrossoverFreq(data.crossoverFreq);
       setImportText('');
       setShowImportExport(false);
       return true;
@@ -660,6 +671,7 @@ Based on this data, please provide:
               <NumberInput label="Height" value={room.height} onChange={v => setRoom({...room, height: v})} unit="ft" />
             </div>
             <h3 className="text-lg font-medium mt-4">Wall Openings</h3>
+            <p className="text-sm text-gray-400 mb-2">If this wall is open to another room, measure the total area that is open, and divide that by the area of the wall to get a %.</p>
             <div className="grid grid-cols-4 gap-4">
               <NumberInput label="Front" value={wallOpenings.front} onChange={v => setWallOpenings({...wallOpenings, front: v})} unit="%" step={5} />
               <NumberInput label="Rear" value={wallOpenings.rear} onChange={v => setWallOpenings({...wallOpenings, rear: v})} unit="%" step={5} />
@@ -690,6 +702,7 @@ Based on this data, please provide:
               Add Speaker
             </button>
           </div>
+          <p className="text-sm text-gray-400">Measure distances based on the centerpoint of the woofer. If a speaker has multiple woofers, measure based on the midpoint of the woofer array.</p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {speakers.map((speaker, i) => (
               <SpeakerInput
@@ -702,6 +715,28 @@ Based on this data, please provide:
             ))}
           </div>
           
+          {/* Crossover Frequency */}
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <h3 className="text-lg font-medium mb-2">Crossover Frequency</h3>
+            <p className="text-sm text-gray-400 mb-3">Crossover frequency between small speakers and subwoofers. (Only used in conjunction with small speakers. Large speakers are assumed to be full-range.)</p>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-gray-400">Crossover</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={crossoverFreq ?? ''}
+                  onChange={e => setCrossoverFreq(e.target.value === '' ? null : parseFloat(e.target.value) || null)}
+                  min={40}
+                  max={200}
+                  step={5}
+                  placeholder="—"
+                  className="w-24 px-2 py-1 bg-gray-700 rounded text-white"
+                />
+                <span className="text-gray-400 text-sm">Hz</span>
+              </div>
+            </div>
+          </div>
+
           {/* EQ Availability */}
           <div className="border-t border-gray-700 pt-4 mt-4">
             <h3 className="text-lg font-medium mb-3">EQ Availability</h3>
@@ -1049,14 +1084,17 @@ Based on this data, please provide:
             
             {/* Legend */}
             <div className="absolute bottom-2 right-2 text-xs space-y-1 bg-gray-800/80 p-2 rounded">
+              {speakers.map((speaker, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    speaker.type === 'Large Dipole' ? 'bg-purple-600' : 'bg-green-600'
+                  }`}>{i + 1}</div>
+                  <span>{speaker.name}</span>
+                </div>
+              ))}
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-purple-600 rounded-full" /> Large Dipole
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-green-600 rounded-full" /> Other speakers
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-blue-500 rounded-full" /> Listener
+                <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">👤</div>
+                <span>Listener</span>
               </div>
             </div>
           </div>
