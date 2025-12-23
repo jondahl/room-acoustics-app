@@ -130,7 +130,7 @@ const calcBoundaryGain = (speaker, room, wallOpenings) => {
   const threshold = 2;
   
   let gain = 0;
-  const isMonopole = type === 'monopole';
+  const isMonopole = type !== 'Large Dipole';
   const gainPerBoundary = isMonopole ? 3 : 1.5;
   
   if (z < threshold) gain += gainPerBoundary; // floor
@@ -216,11 +216,16 @@ const SpeakerInput = ({ speaker, index, onChange, onRemove }) => (
           onChange={e => onChange(index, { ...speaker, type: e.target.value })}
           className="bg-gray-600 px-2 py-1 rounded text-white"
         >
-          <option value="monopole">Monopole (sealed/ported)</option>
-          <option value="dipole">Dipole (open baffle)</option>
+          <option value="Small Sealed">Small Sealed</option>
+          <option value="Small Ported">Small Ported</option>
+          <option value="Large Sealed">Large Sealed</option>
+          <option value="Large Ported">Large Ported</option>
+          <option value="Large Dipole">Large Dipole</option>
+          <option value="Subwoofer Sealed">Subwoofer Sealed</option>
+          <option value="Subwoofer Ported">Subwoofer Ported</option>
         </select>
       </div>
-      {speaker.type === 'dipole' && (
+      {speaker.type === 'Large Dipole' && (
         <NumberInput
           label="Orientation (0=facing rear)"
           value={speaker.orientation || 0}
@@ -260,9 +265,9 @@ const ModeBar = ({ pressure, showLabel = true }) => {
 export default function RoomAcousticsApp() {
   // Room state
   const [room, setRoom] = useState({
-    length: 22.58,
-    width: 16,
-    height: 11.25,
+    length: 18,
+    width: 14,
+    height: 9,
   });
   
   // Wall openings state
@@ -270,22 +275,22 @@ export default function RoomAcousticsApp() {
     front: 0,
     rear: 0,
     left: 0,
-    right: 40,
+    right: 0,
   });
   
   // Listening position state
   const [listener, setListener] = useState({
-    x: 16.92,
-    y: 7.5,
-    z: 4.42,
+    x: 11,
+    y: 7,
+    z: 3.5,
   });
   
   // Speakers state
   const [speakers, setSpeakers] = useState([
-    { name: 'LX521 Front-Left', x: 5.75, y: 5.08, z: 3, type: 'dipole', orientation: 0, powerOffset: 0 },
-    { name: 'LX521 Front-Right', x: 7.42, y: 13.67, z: 3, type: 'dipole', orientation: 0, powerOffset: 0 },
-    { name: 'SVS SB-1000 Pro', x: 1, y: 15.17, z: 0, type: 'monopole', orientation: 0, powerOffset: 0 },
-    { name: 'KEF T-2', x: 11.29, y: 0.5, z: 0, type: 'monopole', orientation: 0, powerOffset: -6 },
+    { name: 'Front Left', x: 2, y: 2, z: 3, type: 'Small Ported', orientation: 0, powerOffset: 0 },
+    { name: 'Front Right', x: 2, y: 12, z: 3, type: 'Small Ported', orientation: 0, powerOffset: 0 },
+    { name: 'Sub 1', x: 1, y: 1, z: 0, type: 'Subwoofer Sealed', orientation: 0, powerOffset: 0 },
+    { name: 'Sub 2', x: 1, y: 13, z: 0, type: 'Subwoofer Sealed', orientation: 0, powerOffset: 0 },
   ]);
   
   // EQ availability
@@ -310,7 +315,7 @@ export default function RoomAcousticsApp() {
       x: room.length / 2,
       y: room.width / 2,
       z: 0,
-      type: 'monopole',
+      type: 'Small Sealed',
       orientation: 0,
       powerOffset: 0,
     }]);
@@ -338,7 +343,7 @@ export default function RoomAcousticsApp() {
       
       const speakerExcitation = speakers.map(speaker => {
         let excitation;
-        if (speaker.type === 'dipole') {
+        if (speaker.type === 'Large Dipole') {
           excitation = calcDipoleExcitation(speaker, mode, room);
         } else {
           excitation = calcPressureAtPosition(speaker.x, speaker.y, speaker.z, mode, room, wallOpenings);
@@ -439,7 +444,7 @@ ${speakers.map(s => `### ${s.name}
 - Type: ${s.type}
 - Power offset: ${s.powerOffset} dB
 - Boundary gain: +${speakerAnalysis.find(sa => sa.name === s.name)?.boundaryGain.toFixed(1) || 0} dB
-${s.type === 'dipole' ? `- Orientation: ${s.orientation}°` : ''}`).join('\n\n')}
+${s.type === 'Large Dipole' ? `- Orientation: ${s.orientation}°` : ''}`).join('\n\n')}
 
 ## EQ / Room Correction Availability
 - Main speakers: ${eqAvailable.main ? 'YES - DSP/room correction available' : 'NO - positioning and acoustic treatment only'}
@@ -509,7 +514,7 @@ Based on this data, please provide:
       r: [room.length, room.width, room.height],
       w: [wallOpenings.front, wallOpenings.rear, wallOpenings.left, wallOpenings.right],
       l: [listener.x, listener.y, listener.z],
-      s: speakers.map(s => [s.name, s.x, s.y, s.z, s.type === 'dipole' ? 1 : 0, s.orientation || 0, s.powerOffset || 0]),
+      s: speakers.map(s => [s.name, s.x, s.y, s.z, s.type, s.orientation || 0, s.powerOffset || 0]),
       e: [eqAvailable.main ? 1 : 0, eqAvailable.sub ? 1 : 0],
     });
   };
@@ -520,7 +525,7 @@ Based on this data, please provide:
     if (data.l) setListener({ x: data.l[0], y: data.l[1], z: data.l[2] });
     if (data.s) setSpeakers(data.s.map(s => ({
       name: s[0], x: s[1], y: s[2], z: s[3],
-      type: s[4] === 1 ? 'dipole' : 'monopole',
+      type: s[4],
       orientation: s[5] || 0,
       powerOffset: s[6] || 0,
     })));
@@ -1019,7 +1024,7 @@ Based on this data, please provide:
               <div
                 key={i}
                 className={`absolute w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transform -translate-x-1/2 -translate-y-1/2 ${
-                  speaker.type === 'dipole' ? 'bg-purple-600 border-purple-300' : 'bg-green-600 border-green-300'
+                  speaker.type === 'Large Dipole' ? 'bg-purple-600 border-purple-300' : 'bg-green-600 border-green-300'
                 }`}
                 style={{
                   left: `${(speaker.y / room.width) * 100}%`,
@@ -1045,10 +1050,10 @@ Based on this data, please provide:
             {/* Legend */}
             <div className="absolute bottom-2 right-2 text-xs space-y-1 bg-gray-800/80 p-2 rounded">
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-purple-600 rounded-full" /> Dipole
+                <div className="w-3 h-3 bg-purple-600 rounded-full" /> Large Dipole
               </div>
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-green-600 rounded-full" /> Monopole
+                <div className="w-3 h-3 bg-green-600 rounded-full" /> Other speakers
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-blue-500 rounded-full" /> Listener
