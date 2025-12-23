@@ -148,6 +148,101 @@ const calcSchroederFreq = (volume, rt60 = 0.4) => {
   return 2000 * Math.sqrt(rt60 / volumeM3);
 };
 
+// ============== FREQUENCY RESPONSE CALCULATIONS ==============
+
+// Monopole coupling: signed cosine eigenfunction with wall opening reduction
+const calcMonopoleCouplingForFreqResponse = (x, y, z, mode, room, wallOpenings) => {
+  const { n, m, l } = mode;
+  const { length, width, height } = room;
+
+  // Base coupling (SIGNED - do not take absolute value)
+  let pX = n > 0 ? Math.cos(n * Math.PI * x / length) : 1;
+  let pY = m > 0 ? Math.cos(m * Math.PI * y / width) : 1;
+  let pZ = l > 0 ? Math.cos(l * Math.PI * z / height) : 1;
+
+  let coupling = pX * pY * pZ;
+
+  // Apply wall opening reductions (reduces mode strength when walls are open)
+  if (m > 0) {
+    const leftReduction = 1 - wallOpenings.left / 100;
+    const rightReduction = 1 - wallOpenings.right / 100;
+    coupling *= (leftReduction + rightReduction) / 2;
+  }
+  if (n > 0) {
+    const frontReduction = 1 - wallOpenings.front / 100;
+    const rearReduction = 1 - wallOpenings.rear / 100;
+    coupling *= (frontReduction + rearReduction) / 2;
+  }
+
+  return coupling;
+};
+
+// Dipole coupling: gradient of pressure field (dipoles couple to velocity, not pressure)
+const calcDipoleCouplingForFreqResponse = (speaker, mode, room, wallOpenings) => {
+  const { x, y, z, orientation } = speaker;
+  const { n, m, l } = mode;
+  const { length, width, height } = room;
+
+  const orientRad = (orientation || 0) * Math.PI / 180;
+
+  // Gradient components (spatial derivative of pressure eigenfunction)
+  // gradX = ∂p/∂x = -(nπ/L) * sin(nπx/L) * cos(mπy/W) * cos(lπz/H)
+  const gradX = n > 0
+    ? -(n * Math.PI / length) * Math.sin(n * Math.PI * x / length)
+      * (m > 0 ? Math.cos(m * Math.PI * y / width) : 1)
+      * (l > 0 ? Math.cos(l * Math.PI * z / height) : 1)
+    : 0;
+
+  // gradY = ∂p/∂y = -(mπ/W) * cos(nπx/L) * sin(mπy/W) * cos(lπz/H)
+  const gradY = m > 0
+    ? -(m * Math.PI / width) * (n > 0 ? Math.cos(n * Math.PI * x / length) : 1)
+      * Math.sin(m * Math.PI * y / width)
+      * (l > 0 ? Math.cos(l * Math.PI * z / height) : 1)
+    : 0;
+
+  // gradZ for future vertical dipole support (currently unused)
+  // const gradZ = l > 0
+  //   ? -(l * Math.PI / height) * (n > 0 ? Math.cos(n * Math.PI * x / length) : 1)
+  //     * (m > 0 ? Math.cos(m * Math.PI * y / width) : 1)
+  //     * Math.sin(l * Math.PI * z / height)
+  //   : 0;
+
+  // Dipole coupling based on horizontal orientation
+  let coupling = Math.cos(orientRad) * gradX + Math.sin(orientRad) * gradY;
+
+  // Apply wall opening reductions
+  if (m > 0) {
+    const leftReduction = 1 - wallOpenings.left / 100;
+    const rightReduction = 1 - wallOpenings.right / 100;
+    coupling *= (leftReduction + rightReduction) / 2;
+  }
+  if (n > 0) {
+    const frontReduction = 1 - wallOpenings.front / 100;
+    const rearReduction = 1 - wallOpenings.rear / 100;
+    coupling *= (frontReduction + rearReduction) / 2;
+  }
+
+  return coupling;
+};
+
+// Generate 1/24 octave frequency bands from 20-200 Hz
+const generate124OctaveBands = (minFreq = 20, maxFreq = 200) => {
+  const bands = [];
+  let i = 0;
+  while (minFreq * Math.pow(2, i / 24) <= maxFreq) {
+    bands.push(minFreq * Math.pow(2, i / 24));
+    i++;
+  }
+  return bands;
+};
+
+// Mode type strength (linear multiplier)
+const getModeStrength = (type) => {
+  if (type === 'axial') return 1.0;       // 0 dB
+  if (type === 'tangential') return 0.708; // -3 dB
+  return 0.501;                            // -6 dB (oblique)
+};
+
 // ============== UI COMPONENTS ==============
 
 const NumberInput = ({ label, value, onChange, min, max, step = 0.1, unit = '' }) => (
@@ -301,7 +396,10 @@ export default function RoomAcousticsApp() {
 
   // Crossover frequency
   const [crossoverFreq, setCrossoverFreq] = useState(null);
-  
+
+  // RT60 for mode bandwidth calculation
+  const [rt60, setRt60] = useState(0.4);
+
   const updateSpeaker = (index, newSpeaker) => {
     const newSpeakers = [...speakers];
     newSpeakers[index] = newSpeaker;
@@ -396,7 +494,85 @@ export default function RoomAcousticsApp() {
     
     return { nulls, peaks, problematicBands };
   }, [modalAnalysis]);
-  
+
+  // Frequency response calculation (1/24 octave, complex summation)
+  const frequencyResponse = useMemo(() => {
+    const bands = generate124OctaveBands(20, 200);
+    const bandwidth = 2.2 / rt60;
+
+    // Generate modes up to 250 Hz (extra headroom for bandwidth overlap)
+    const allModes = generateModes(room.length, room.width, room.height, 250, 8);
+
+    // Pre-calculate source and listener coupling for each mode
+    const modesWithCoupling = allModes.map(mode => {
+      // Calculate total source coupling (sum all speakers, signed)
+      let sourceCoupling = 0;
+      for (const speaker of speakers) {
+        let coupling;
+        if (speaker.type === 'Large Dipole') {
+          coupling = calcDipoleCouplingForFreqResponse(speaker, mode, room, wallOpenings);
+        } else {
+          coupling = calcMonopoleCouplingForFreqResponse(speaker.x, speaker.y, speaker.z, mode, room, wallOpenings);
+        }
+        // Apply power offset
+        const powerFactor = Math.pow(10, (speaker.powerOffset || 0) / 20);
+        sourceCoupling += coupling * powerFactor;
+      }
+
+      // Calculate listener coupling (signed)
+      const listenerCoupling = calcMonopoleCouplingForFreqResponse(
+        listener.x, listener.y, listener.z, mode, room, wallOpenings
+      );
+
+      // Mode Q factor
+      const Q = mode.freq / bandwidth;
+
+      // Mode type strength
+      const strength = getModeStrength(mode.type);
+
+      return { ...mode, sourceCoupling, listenerCoupling, Q, strength };
+    });
+
+    // Calculate response at each frequency band using complex summation
+    const results = [];
+    for (const f of bands) {
+      let pReal = 0;
+      let pImag = 0;
+
+      for (const mode of modesWithCoupling) {
+        // Spatial coupling (signed throughout)
+        const spatial = mode.sourceCoupling * mode.listenerCoupling * mode.strength;
+
+        // Complex frequency response H(f) = 1 / (1 - (f/fn)² + j*(f/fn)/Q)
+        const fRatio = f / mode.freq;
+        const denomReal = 1 - fRatio * fRatio;
+        const denomImag = fRatio / mode.Q;
+        const denomMagSq = denomReal * denomReal + denomImag * denomImag;
+
+        // H = (denomReal - j*denomImag) / |denom|²
+        const hReal = denomReal / denomMagSq;
+        const hImag = -denomImag / denomMagSq;
+
+        // Contribution = spatial * H (spatial is real, H is complex)
+        pReal += spatial * hReal;
+        pImag += spatial * hImag;
+      }
+
+      // Final magnitude
+      const magnitude = Math.sqrt(pReal * pReal + pImag * pImag);
+      results.push({ freq: f, magnitude });
+    }
+
+    // Convert to dB relative to average
+    const avgMagnitude = results.reduce((sum, r) => sum + r.magnitude, 0) / results.length;
+
+    return results.map(r => ({
+      freq: r.freq,
+      magnitude: r.magnitude,
+      dB: avgMagnitude > 0 ? 20 * Math.log10(r.magnitude / avgMagnitude) : 0
+    }));
+  }, [room, speakers, listener, wallOpenings, rt60]);
+
   // Generate LLM prompt
   const generateLLMPrompt = () => {
     const prompt = `# Room Acoustics Analysis - Data for LLM Analysis
@@ -513,6 +689,7 @@ Based on this data, please provide:
       speakers,
       eqAvailable,
       crossoverFreq,
+      rt60,
     }, null, 2);
   };
   
@@ -525,6 +702,7 @@ Based on this data, please provide:
       s: speakers.map(s => [s.name, s.x, s.y, s.z, s.type, s.orientation || 0, s.powerOffset || 0]),
       e: [eqAvailable.main ? 1 : 0, eqAvailable.sub ? 1 : 0],
       c: crossoverFreq,
+      t: rt60,
     });
   };
   
@@ -540,6 +718,7 @@ Based on this data, please provide:
     })));
     if (data.e) setEqAvailable({ main: data.e[0] === 1, sub: data.e[1] === 1 });
     if (data.c) setCrossoverFreq(data.c);
+    if (data.t) setRt60(data.t);
   };
   
   // URL-safe base64
@@ -578,7 +757,7 @@ Based on this data, please provide:
     const url = new URL(window.location.href.split('?')[0]);
     url.searchParams.set('c', compressed);
     window.history.replaceState(null, '', url.toString());
-  }, [room, wallOpenings, listener, speakers, eqAvailable, crossoverFreq]);
+  }, [room, wallOpenings, listener, speakers, eqAvailable, crossoverFreq, rt60]);
 
   const deserializeState = (jsonStr) => {
     try {
@@ -597,6 +776,7 @@ Based on this data, please provide:
       if (data.speakers) setSpeakers(data.speakers);
       if (data.eqAvailable) setEqAvailable(data.eqAvailable);
       if (data.crossoverFreq) setCrossoverFreq(data.crossoverFreq);
+      if (data.rt60) setRt60(data.rt60);
       setImportText('');
       setShowImportExport(false);
       return true;
@@ -686,8 +866,11 @@ Based on this data, please provide:
               <NumberInput label="Left" value={wallOpenings.left} onChange={v => setWallOpenings({...wallOpenings, left: v})} unit="%" step={5} />
               <NumberInput label="Right" value={wallOpenings.right} onChange={v => setWallOpenings({...wallOpenings, right: v})} unit="%" step={5} />
             </div>
+            <h3 className="text-lg font-medium mt-4">Room Acoustics</h3>
+            <p className="text-sm text-gray-400 mb-2">RT60 is the time for sound to decay by 60dB. Typical listening rooms: 0.3-0.5s. Affects mode bandwidth in frequency response calculation.</p>
+            <NumberInput label="RT60" value={rt60} onChange={setRt60} unit="s" step={0.05} min={0.1} max={1.5} />
           </div>
-          
+
           {/* Listening Position */}
           <div className="bg-gray-800 rounded-lg p-4 space-y-4">
             <h2 className="text-xl font-semibold">Listening Position</h2>
@@ -998,7 +1181,141 @@ Based on this data, please provide:
             </pre>
           )}
         </div>
-        
+
+        {/* OUTPUT SECTION 6: Predicted Frequency Response */}
+        <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+          <h2 className="text-xl font-semibold">6. Predicted Frequency Response</h2>
+          <p className="text-sm text-gray-400">
+            1/24 octave resolution, relative to average level. Based on room modes, speaker positions, and listening position.
+            Green: ±3dB, Yellow: ±6dB, Red: beyond ±6dB.
+          </p>
+
+          {/* Frequency response bar chart */}
+          <div className="overflow-x-auto">
+            <div className="flex items-end gap-px min-w-max h-48 bg-gray-900 p-4 rounded">
+              {frequencyResponse.map((point, i) => {
+                // Clamp display to ±15 dB
+                const clampedDb = Math.max(-15, Math.min(15, point.dB));
+                // Map -15 to +15 dB to 0-100% height, with 0 dB at 50%
+                const heightPercent = ((clampedDb + 15) / 30) * 100;
+
+                // Color based on deviation from 0 dB
+                let barColor = 'bg-green-500';
+                const absDb = Math.abs(point.dB);
+                if (absDb > 6) barColor = 'bg-red-500';
+                else if (absDb > 3) barColor = 'bg-yellow-500';
+
+                return (
+                  <div
+                    key={i}
+                    className="flex flex-col items-center justify-end h-full"
+                    style={{ width: '8px' }}
+                    title={`${point.freq.toFixed(1)} Hz: ${point.dB > 0 ? '+' : ''}${point.dB.toFixed(1)} dB`}
+                  >
+                    <div
+                      className={`w-full ${barColor} rounded-t-sm`}
+                      style={{
+                        height: `${heightPercent}%`,
+                        minHeight: '2px'
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {/* X-axis labels */}
+            <div className="flex justify-between text-xs text-gray-400 mt-1 px-4">
+              <span>20 Hz</span>
+              <span>50 Hz</span>
+              <span>100 Hz</span>
+              <span>200 Hz</span>
+            </div>
+          </div>
+
+          {/* Key statistics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <div className="bg-gray-700 rounded p-3">
+              <div className="text-sm text-gray-400">Max Peak</div>
+              <div className="text-lg font-bold text-red-400">
+                +{Math.max(...frequencyResponse.map(p => p.dB)).toFixed(1)} dB
+              </div>
+              <div className="text-xs text-gray-500">
+                @ {frequencyResponse.find(p => p.dB === Math.max(...frequencyResponse.map(x => x.dB)))?.freq.toFixed(0)} Hz
+              </div>
+            </div>
+            <div className="bg-gray-700 rounded p-3">
+              <div className="text-sm text-gray-400">Max Null</div>
+              <div className="text-lg font-bold text-blue-400">
+                {Math.min(...frequencyResponse.map(p => p.dB)).toFixed(1)} dB
+              </div>
+              <div className="text-xs text-gray-500">
+                @ {frequencyResponse.find(p => p.dB === Math.min(...frequencyResponse.map(x => x.dB)))?.freq.toFixed(0)} Hz
+              </div>
+            </div>
+            <div className="bg-gray-700 rounded p-3">
+              <div className="text-sm text-gray-400">Peak-to-Peak</div>
+              <div className="text-lg font-bold">
+                {(Math.max(...frequencyResponse.map(p => p.dB)) - Math.min(...frequencyResponse.map(p => p.dB))).toFixed(1)} dB
+              </div>
+            </div>
+            <div className="bg-gray-700 rounded p-3">
+              <div className="text-sm text-gray-400">Mode Bandwidth</div>
+              <div className="text-lg font-bold">
+                {(2.2 / rt60).toFixed(1)} Hz
+              </div>
+              <div className="text-xs text-gray-500">
+                (RT60 = {rt60}s)
+              </div>
+            </div>
+          </div>
+
+          {/* Frequency table (collapsible) */}
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-300">
+              Show detailed frequency data ({frequencyResponse.length} bands)
+            </summary>
+            <div className="mt-2 max-h-64 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-gray-800">
+                  <tr className="text-left text-gray-400">
+                    <th className="p-1">Freq</th>
+                    <th className="p-1">Level</th>
+                    <th className="p-1">Visual</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {frequencyResponse.filter((_, i) => i % 2 === 0).map((point, i) => {
+                    const absDb = Math.abs(point.dB);
+                    let color = 'text-green-400';
+                    if (absDb > 6) color = 'text-red-400';
+                    else if (absDb > 3) color = 'text-yellow-400';
+
+                    return (
+                      <tr key={i} className="border-b border-gray-700">
+                        <td className="p-1">{point.freq.toFixed(1)} Hz</td>
+                        <td className={`p-1 ${color}`}>
+                          {point.dB > 0 ? '+' : ''}{point.dB.toFixed(1)} dB
+                        </td>
+                        <td className="p-1">
+                          <div className="w-24 h-2 bg-gray-600 rounded overflow-hidden">
+                            <div
+                              className={`h-full ${absDb > 6 ? 'bg-red-500' : absDb > 3 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                              style={{
+                                width: `${Math.min(100, (Math.abs(point.dB) / 15) * 100)}%`,
+                                marginLeft: point.dB < 0 ? 'auto' : 0
+                              }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+
         {/* Room Visualization */}
         <div className="bg-gray-800 rounded-lg p-4">
           <h2 className="text-xl font-semibold mb-4">Room Layout (Top View)</h2>
