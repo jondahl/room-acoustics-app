@@ -461,12 +461,12 @@ ${eqAvailable.sub && !eqAvailable.main ? '\n**Note:** Since only subwoofer EQ is
 
 ## Modal Analysis at Listening Position (modes up to 150 Hz)
 
-### Critical Nulls (< 15% pressure at LP, axial modes only)
+### Critical Nulls (< 15% pressure at listening position, axial modes only)
 ${keyFindings.nulls.length > 0 
   ? keyFindings.nulls.map(m => `- ${m.freq.toFixed(1)} Hz (${m.n},${m.m},${m.l}): ${(m.lpPressure*100).toFixed(0)}% pressure`).join('\n')
   : 'None identified'}
 
-### Critical Peaks (> 85% pressure at LP, axial modes only)
+### Critical Peaks (> 85% pressure at listening position, axial modes only)
 ${keyFindings.peaks.length > 0
   ? keyFindings.peaks.map(m => `- ${m.freq.toFixed(1)} Hz (${m.n},${m.m},${m.l}): ${(m.lpPressure*100).toFixed(0)}% pressure`).join('\n')
   : 'None identified'}
@@ -477,7 +477,7 @@ ${keyFindings.problematicBands.length > 0
   : 'None identified'}
 
 ## Full Modal Data (first 30 modes)
-| Mode | Freq | Type | LP Pressure | ${speakers.map(s => s.name.substring(0,10)).join(' | ')} |
+| Mode | Freq | Type | Listening Position | ${speakers.map(s => s.name.substring(0,10)).join(' | ')} |
 |------|------|------|-------------|${speakers.map(() => '------').join('|')}|
 ${modalAnalysis.slice(0, 30).map(m => 
   `| (${m.n},${m.m},${m.l}) | ${m.freq.toFixed(1)} | ${m.type.substring(0,4)} | ${(m.lpPressure*100).toFixed(0)}% | ${m.speakerExcitation.map(se => `${(se.excitation*100).toFixed(0)}%`).join(' | ')} |`
@@ -844,7 +844,7 @@ Based on this data, please provide:
                   <th className="p-2">Freq</th>
                   <th className="p-2">Type</th>
                   <th className="p-2">Level</th>
-                  <th className="p-2">LP Pressure</th>
+                  <th className="p-2">Pressure at listening position</th>
                 </tr>
               </thead>
               <tbody>
@@ -906,7 +906,7 @@ Based on this data, please provide:
                 <tr className="text-left text-gray-400 border-b border-gray-700">
                   <th className="p-2">Mode</th>
                   <th className="p-2">Freq</th>
-                  <th className="p-2">LP</th>
+                  <th className="p-2">Listening position</th>
                   {speakers.map((s, i) => (
                     <th key={i} className="p-2">{s.name.substring(0, 12)}</th>
                   ))}
