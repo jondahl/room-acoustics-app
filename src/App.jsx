@@ -219,11 +219,30 @@ const scoreSubConfig = (subPositions, modes, room, listener) => {
   // Score: lower peak-to-peak = better (scaled so ±15dB → ~50 score)
   const flatnessScore = Math.max(0, 100 - peakToPeak * 3);
 
+  // Calculate mode-by-mode details for expanded view
+  const modeDetails = modes.filter(m => m.freq <= 120).map(mode => {
+    const lpCoupling = calcPressureWithSign(listener, mode, room);
+    const netSubExcitation = subPositions.reduce((sum, sub) => {
+      return sum + calcPressureWithSign(sub, mode, room);
+    }, 0);
+    const effectiveImpact = Math.abs(netSubExcitation * lpCoupling);
+
+    return {
+      mode,
+      lpPressure: Math.abs(lpCoupling),
+      netExcitation: netSubExcitation,
+      absExcitation: Math.abs(netSubExcitation),
+      effectiveImpact,
+      isCancelled: Math.abs(netSubExcitation) < 0.2 && subPositions.length > 1,
+    };
+  });
+
   return {
     overall: flatnessScore,
     peakToPeak,
     stdDev,
     fr,
+    modeDetails,
   };
 };
 
@@ -293,6 +312,28 @@ const PLACEMENT_STRATEGIES = {
     ],
   },
 
+  // Triple sub configurations
+  'triple-front-wall': {
+    name: 'Front Wall Distributed',
+    subs: 3,
+    description: 'Three across front wall at 1/4, 1/2, 3/4 positions',
+    getPositions: (room) => [
+      { x: 0.5, y: room.width * 0.25, z: 0 },
+      { x: 0.5, y: room.width * 0.5, z: 0 },
+      { x: 0.5, y: room.width * 0.75, z: 0 },
+    ],
+  },
+  'triple-lfe-array': {
+    name: 'LFE Array (Front + Rear Center)',
+    subs: 3,
+    description: 'Two front corners + rear center for length mode control',
+    getPositions: (room) => [
+      { x: 0.5, y: 0.5, z: 0 },
+      { x: 0.5, y: room.width - 0.5, z: 0 },
+      { x: room.length - 0.5, y: room.width / 2, z: 0 },
+    ],
+  },
+
   // Quad sub configurations
   'quad-corners': {
     name: 'Four Corners',
@@ -310,6 +351,91 @@ const PLACEMENT_STRATEGIES = {
     subs: 4,
     description: 'Midpoint of each wall, nulls many axial modes',
     getPositions: (room) => [
+      { x: 0.5, y: room.width / 2, z: 0 },
+      { x: room.length - 0.5, y: room.width / 2, z: 0 },
+      { x: room.length / 2, y: 0.5, z: 0 },
+      { x: room.length / 2, y: room.width - 0.5, z: 0 },
+    ],
+  },
+  'quad-double-bass-array': {
+    name: 'Double Bass Array (Front)',
+    subs: 4,
+    description: 'Four subs across front wall for plane wave',
+    getPositions: (room) => [
+      { x: 0.5, y: room.width * 0.125, z: 0 },
+      { x: 0.5, y: room.width * 0.375, z: 0 },
+      { x: 0.5, y: room.width * 0.625, z: 0 },
+      { x: 0.5, y: room.width * 0.875, z: 0 },
+    ],
+  },
+
+  // Five sub configurations
+  'five-corners-plus-center': {
+    name: 'Four Corners + Front Center',
+    subs: 5,
+    description: 'Corners for cancellation + center for output',
+    getPositions: (room) => [
+      { x: 0.5, y: 0.5, z: 0 },
+      { x: 0.5, y: room.width - 0.5, z: 0 },
+      { x: room.length - 0.5, y: 0.5, z: 0 },
+      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
+      { x: 0.5, y: room.width / 2, z: 0 },
+    ],
+  },
+
+  // Six sub configurations
+  'six-distributed': {
+    name: 'Six Distributed',
+    subs: 6,
+    description: 'Three front + three rear for even coverage',
+    getPositions: (room) => [
+      { x: 0.5, y: room.width * 0.17, z: 0 },
+      { x: 0.5, y: room.width * 0.5, z: 0 },
+      { x: 0.5, y: room.width * 0.83, z: 0 },
+      { x: room.length - 0.5, y: room.width * 0.17, z: 0 },
+      { x: room.length - 0.5, y: room.width * 0.5, z: 0 },
+      { x: room.length - 0.5, y: room.width * 0.83, z: 0 },
+    ],
+  },
+  'six-corners-plus-midwalls': {
+    name: 'Four Corners + Side Midwalls',
+    subs: 6,
+    description: 'Corners plus left/right midwall for length mode control',
+    getPositions: (room) => [
+      { x: 0.5, y: 0.5, z: 0 },
+      { x: 0.5, y: room.width - 0.5, z: 0 },
+      { x: room.length - 0.5, y: 0.5, z: 0 },
+      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
+      { x: room.length / 2, y: 0.5, z: 0 },
+      { x: room.length / 2, y: room.width - 0.5, z: 0 },
+    ],
+  },
+
+  // Eight sub configurations
+  'eight-perimeter': {
+    name: 'Eight Perimeter',
+    subs: 8,
+    description: 'Two per wall for maximum mode cancellation',
+    getPositions: (room) => [
+      { x: 0.5, y: room.width * 0.25, z: 0 },
+      { x: 0.5, y: room.width * 0.75, z: 0 },
+      { x: room.length - 0.5, y: room.width * 0.25, z: 0 },
+      { x: room.length - 0.5, y: room.width * 0.75, z: 0 },
+      { x: room.length * 0.25, y: 0.5, z: 0 },
+      { x: room.length * 0.75, y: 0.5, z: 0 },
+      { x: room.length * 0.25, y: room.width - 0.5, z: 0 },
+      { x: room.length * 0.75, y: room.width - 0.5, z: 0 },
+    ],
+  },
+  'eight-corners-plus-midwalls': {
+    name: 'Four Corners + Four Midwalls',
+    subs: 8,
+    description: 'Maximum cancellation configuration',
+    getPositions: (room) => [
+      { x: 0.5, y: 0.5, z: 0 },
+      { x: 0.5, y: room.width - 0.5, z: 0 },
+      { x: room.length - 0.5, y: 0.5, z: 0 },
+      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
       { x: 0.5, y: room.width / 2, z: 0 },
       { x: room.length - 0.5, y: room.width / 2, z: 0 },
       { x: room.length / 2, y: 0.5, z: 0 },
@@ -609,6 +735,7 @@ export default function RoomAcousticsApp() {
     numSubs: 2,
     symmetryConstraint: true,
   });
+  const [expandedStrategies, setExpandedStrategies] = useState(new Set());
 
   const updateSpeaker = (index, newSpeaker) => {
     const newSpeakers = [...speakers];
@@ -711,9 +838,8 @@ export default function RoomAcousticsApp() {
 
     const modesForOptimization = modes.filter(m => m.freq <= 120);
 
-    // Evaluate predefined strategies
-    const strategyResults = Object.entries(PLACEMENT_STRATEGIES)
-      .filter(([, strategy]) => strategy.subs === subOptimizerConfig.numSubs)
+    // Evaluate ALL predefined strategies (not filtered by numSubs)
+    const allStrategyResults = Object.entries(PLACEMENT_STRATEGIES)
       .map(([key, strategy]) => {
         const positions = strategy.getPositions(room);
         const score = scoreSubConfig(positions, modesForOptimization, room, listener);
@@ -721,7 +847,10 @@ export default function RoomAcousticsApp() {
       })
       .sort((a, b) => b.score.overall - a.score.overall);
 
-    // Run grid search optimization
+    // Top 10 strategies
+    const strategyResults = allStrategyResults.slice(0, 10);
+
+    // Run grid search optimization for selected numSubs
     const optimizedConfig = optimizeSubPositions(
       subOptimizerConfig.numSubs,
       modesForOptimization,
@@ -732,6 +861,7 @@ export default function RoomAcousticsApp() {
 
     return {
       strategyResults,
+      allStrategyResults,
       optimizedConfig,
       bestStrategy: strategyResults[0],
     };
@@ -1402,17 +1532,17 @@ Based on this data, please provide:
             <>
               {/* Configuration Panel */}
               <div className="bg-gray-700 rounded p-4 space-y-4">
-                <h3 className="font-medium">Configuration</h3>
+                <h3 className="font-medium">Grid Search Configuration</h3>
                 <div className="flex flex-wrap gap-6">
-                  {/* Number of Subs */}
+                  {/* Number of Subs for grid search */}
                   <div className="flex flex-col gap-2">
-                    <label className="text-sm text-gray-400">Number of Subwoofers</label>
-                    <div className="flex gap-2">
-                      {[1, 2, 4].map(n => (
+                    <label className="text-sm text-gray-400">Subs for Grid Search</label>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5, 6, 8].map(n => (
                         <button
                           key={n}
                           onClick={() => setSubOptimizerConfig({ ...subOptimizerConfig, numSubs: n })}
-                          className={`px-4 py-2 rounded ${
+                          className={`px-3 py-1 rounded text-sm ${
                             subOptimizerConfig.numSubs === n
                               ? 'bg-blue-600'
                               : 'bg-gray-600 hover:bg-gray-500'
@@ -1444,12 +1574,13 @@ Based on this data, please provide:
               {subOptimizerResults && (
                 <div className="space-y-4">
                   {/* Strategy Comparison Table */}
-                  <h3 className="font-medium">Predefined Strategies</h3>
+                  <h3 className="font-medium">Top 10 Strategies (click row to expand)</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-gray-400 border-b border-gray-700">
                           <th className="p-2">Rank</th>
+                          <th className="p-2">Subs</th>
                           <th className="p-2">Strategy</th>
                           <th className="p-2">FR Preview</th>
                           <th className="p-2">Peak-to-Peak</th>
@@ -1458,30 +1589,106 @@ Based on this data, please provide:
                         </tr>
                       </thead>
                       <tbody>
-                        {subOptimizerResults.strategyResults.map((result, i) => (
-                          <tr
-                            key={result.key}
-                            className={`border-b border-gray-700 ${i === 0 ? 'bg-green-900/20' : ''}`}
-                          >
-                            <td className="p-2">{i === 0 ? '🏆' : i + 1}</td>
-                            <td className="p-2">
-                              <div className="font-medium">{result.strategy.name}</div>
-                              <div className="text-xs text-gray-400">{result.strategy.description}</div>
-                            </td>
-                            <td className="p-2">
-                              <FRCurvePreview fr={result.score.fr} />
-                            </td>
-                            <td className="p-2">±{(result.score.peakToPeak / 2).toFixed(1)} dB</td>
-                            <td className="p-2">
-                              <ScoreBar score={result.score.overall} />
-                            </td>
-                            <td className="p-2 font-mono text-xs">
-                              {result.positions.map((p, j) => (
-                                <div key={j}>({p.x.toFixed(1)}, {p.y.toFixed(1)})</div>
-                              ))}
-                            </td>
-                          </tr>
-                        ))}
+                        {subOptimizerResults.strategyResults.map((result, i) => {
+                          const isExpanded = expandedStrategies.has(result.key);
+                          return (
+                          <React.Fragment key={result.key}>
+                            <tr
+                              onClick={() => {
+                                const newExpanded = new Set(expandedStrategies);
+                                if (isExpanded) {
+                                  newExpanded.delete(result.key);
+                                } else {
+                                  newExpanded.add(result.key);
+                                }
+                                setExpandedStrategies(newExpanded);
+                              }}
+                              className={`border-b border-gray-700 cursor-pointer hover:bg-gray-700/50 ${i === 0 ? 'bg-green-900/20' : ''}`}
+                            >
+                              <td className="p-2">{i === 0 ? '🏆' : i + 1}</td>
+                              <td className="p-2">
+                                <span className="px-2 py-0.5 bg-gray-600 rounded text-xs">{result.strategy.subs}</span>
+                              </td>
+                              <td className="p-2">
+                                <div className="font-medium flex items-center gap-1">
+                                  <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                                  {result.strategy.name}
+                                </div>
+                                <div className="text-xs text-gray-400 ml-4">{result.strategy.description}</div>
+                              </td>
+                              <td className="p-2">
+                                <FRCurvePreview fr={result.score.fr} />
+                              </td>
+                              <td className="p-2">±{(result.score.peakToPeak / 2).toFixed(1)} dB</td>
+                              <td className="p-2">
+                                <ScoreBar score={result.score.overall} />
+                              </td>
+                              <td className="p-2 font-mono text-xs">
+                                {result.positions.map((p, j) => (
+                                  <div key={j}>({p.x.toFixed(1)}, {p.y.toFixed(1)})</div>
+                                ))}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr className="bg-gray-900">
+                                <td colSpan={7} className="p-4">
+                                  <div className="text-sm font-medium mb-2">Mode-by-Mode Impact</div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="text-left text-gray-400 border-b border-gray-600">
+                                          <th className="p-1">Mode</th>
+                                          <th className="p-1">Freq</th>
+                                          <th className="p-1">Type</th>
+                                          <th className="p-1">LP Pressure</th>
+                                          <th className="p-1">Net Excitation</th>
+                                          <th className="p-1">Impact</th>
+                                          <th className="p-1">Status</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {result.score.modeDetails.slice(0, 15).map((detail, k) => (
+                                          <tr key={k} className="border-b border-gray-700">
+                                            <td className="p-1 font-mono">({detail.mode.n},{detail.mode.m},{detail.mode.l})</td>
+                                            <td className="p-1">{detail.mode.freq.toFixed(1)} Hz</td>
+                                            <td className="p-1">
+                                              <span className={`px-1 rounded text-xs ${
+                                                detail.mode.type === 'axial' ? 'bg-red-900' :
+                                                detail.mode.type === 'tangential' ? 'bg-yellow-900' : 'bg-blue-900'
+                                              }`}>{detail.mode.type.substring(0, 3)}</span>
+                                            </td>
+                                            <td className="p-1">{(detail.lpPressure * 100).toFixed(0)}%</td>
+                                            <td className="p-1">
+                                              <span className={detail.isCancelled ? 'text-green-400' : ''}>
+                                                {(detail.absExcitation * 100).toFixed(0)}%
+                                              </span>
+                                            </td>
+                                            <td className="p-1">
+                                              <div className="w-16 h-2 bg-gray-600 rounded overflow-hidden">
+                                                <div
+                                                  className={`h-full ${detail.effectiveImpact > 0.5 ? 'bg-purple-500' : detail.effectiveImpact < 0.2 ? 'bg-green-500' : 'bg-yellow-500'}`}
+                                                  style={{ width: `${Math.min(100, detail.effectiveImpact * 100)}%` }}
+                                                />
+                                              </div>
+                                            </td>
+                                            <td className="p-1">
+                                              {detail.isCancelled && <span className="text-green-400">Cancelled</span>}
+                                              {detail.lpPressure < 0.15 && <span className="text-red-400">LP Null</span>}
+                                              {detail.lpPressure > 0.85 && detail.absExcitation > 0.5 && <span className="text-orange-400">Peak</span>}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  <div className="mt-2 text-xs text-gray-400">
+                                    Showing first 15 modes. Green = cancelled by multi-sub configuration, Purple = strong impact at LP.
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );})}
                       </tbody>
                     </table>
                   </div>
