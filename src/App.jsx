@@ -388,9 +388,19 @@ export default function RoomAcousticsApp() {
   }, [modalAnalysis]);
 
   // Frequency response calculation (1/24 octave, complex summation)
+  // Uses Green's function with c²/V normalization + direct sound to compensate for modal truncation
   const frequencyResponse = useMemo(() => {
     const bands = generate124OctaveBands(20, 200);
     const bandwidth = 2.2 / rt60;
+    const volume = room.length * room.width * room.height;
+
+    // Prefactor for modal normalization (c² / V)
+    const c2_over_V = (SPEED_OF_SOUND * SPEED_OF_SOUND) / volume;
+
+    // Direct sound (1/r) and modal (c²/V × 1/f²) both have units 1/length
+    // They should combine directly with no additional scaling
+    // If empirically wrong, try 1/(4π) ≈ 0.08 if direct dominates
+    const directScale = 1.0;
 
     // Generate modes up to 250 Hz (extra headroom for bandwidth overlap)
     const allModes = generateModes(room.length, room.width, room.height, 250, 8);
@@ -423,29 +433,56 @@ export default function RoomAcousticsApp() {
     // Calculate response at each frequency band using complex summation
     const results = [];
     for (const f of bands) {
-      let pReal = 0;
-      let pImag = 0;
+      // SEPARATE accumulators for direct and modal
+      let directReal = 0;
+      let directImag = 0;
+      let modalReal = 0;
+      let modalImag = 0;
 
+      // Direct sound contribution (with frequency-dependent phase)
+      // Compensates for modal truncation at 250 Hz
+      for (const speaker of speakers) {
+        const dx = speaker.x - listener.x;
+        const dy = speaker.y - listener.y;
+        const dz = speaker.z - listener.z;
+        const r = Math.max(0.5, Math.sqrt(dx * dx + dy * dy + dz * dz));
+
+        const powerFactor = Math.pow(10, (speaker.powerOffset || 0) / 20);
+        const amplitude = powerFactor / r;
+
+        // Phase from travel time: φ = -2πfr/c
+        const phase = -2 * Math.PI * f * r / SPEED_OF_SOUND;
+
+        directReal += amplitude * Math.cos(phase);
+        directImag += amplitude * Math.sin(phase);
+      }
+
+      // Modal contributions with corrected Green's function
       for (const mode of modesWithCoupling) {
-        // Spatial coupling (signed throughout)
         const spatial = mode.sourceCoupling * mode.listenerCoupling * mode.strength;
+        const fn = mode.freq;
 
-        // Complex frequency response H(f) = 1 / (1 - (f/fn)² + j*(f/fn)/Q)
-        const fRatio = f / mode.freq;
-        const denomReal = 1 - fRatio * fRatio;
-        const denomImag = fRatio / mode.Q;
+        // Correct Green's function form: 1 / (fn² - f² + j*f*fn/Q)
+        const denomReal = fn * fn - f * f;
+        const denomImag = f * fn / mode.Q;
         const denomMagSq = denomReal * denomReal + denomImag * denomImag;
 
-        // H = (denomReal - j*denomImag) / |denom|²
         const hReal = denomReal / denomMagSq;
         const hImag = -denomImag / denomMagSq;
 
-        // Contribution = spatial * H (spatial is real, H is complex)
-        pReal += spatial * hReal;
-        pImag += spatial * hImag;
+        modalReal += spatial * hReal;
+        modalImag += spatial * hImag;
       }
 
-      // Final magnitude
+      // Apply prefactors SEPARATELY, then combine
+      modalReal *= c2_over_V;
+      modalImag *= c2_over_V;
+      directReal *= directScale;
+      directImag *= directScale;
+
+      const pReal = directReal + modalReal;
+      const pImag = directImag + modalImag;
+
       const magnitude = Math.sqrt(pReal * pReal + pImag * pImag);
       results.push({ freq: f, magnitude });
     }
