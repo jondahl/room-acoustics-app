@@ -373,8 +373,8 @@ export default function RoomAcousticsApp() {
   
   // Key findings
   const keyFindings = useMemo(() => {
-    const nulls = modalAnalysis.filter(m => m.lpPressure < 0.15 && m.type === 'axial');
-    const peaks = modalAnalysis.filter(m => m.lpPressure > 0.85 && m.type === 'axial');
+    const nulls = modalAnalysis.filter(m => m.lpPressure < 0.15);
+    const peaks = modalAnalysis.filter(m => m.lpPressure > 0.85);
     const problematicBands = [];
     
     // Analyze frequency bands
@@ -464,12 +464,12 @@ ${eqAvailable.sub && !eqAvailable.main ? '\n**Note:** Since only subwoofer EQ is
 
 ## Modal Analysis at Listening Position (modes up to 150 Hz)
 
-### Critical Nulls (< 15% pressure at listening position, axial modes only)
+### Critical Nulls (< 15% pressure at listening position)
 ${keyFindings.nulls.length > 0 
   ? keyFindings.nulls.map(m => `- ${m.freq.toFixed(1)} Hz (${m.n},${m.m},${m.l}): ${(m.lpPressure*100).toFixed(0)}% pressure`).join('\n')
   : 'None identified'}
 
-### Critical Peaks (> 85% pressure at listening position, axial modes only)
+### Critical Peaks (> 85% pressure at listening position)
 ${keyFindings.peaks.length > 0
   ? keyFindings.peaks.map(m => `- ${m.freq.toFixed(1)} Hz (${m.n},${m.m},${m.l}): ${(m.lpPressure*100).toFixed(0)}% pressure`).join('\n')
   : 'None identified'}
@@ -874,7 +874,18 @@ Based on this data, please provide:
         <div className="bg-gray-800 rounded-lg p-4 space-y-4">
           <h2 className="text-xl font-semibold">3. Speaker Position Analysis</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {speakerAnalysis.map((speaker, i) => (
+            {speakerAnalysis.map((speaker, i) => {
+              const modeExcitations = modalAnalysis
+                .filter(m => m.freq <= 120)
+                .map(m => ({
+                  ...m,
+                  excitation: m.speakerExcitation[i]?.excitation || 0
+                }))
+                .sort((a, b) => b.excitation - a.excitation);
+              const strongModes = modeExcitations.filter(m => m.excitation > 0.7);
+              const weakModes = modeExcitations.filter(m => m.excitation < 0.2);
+
+              return (
               <div key={i} className="bg-gray-700 rounded p-4 space-y-3">
                 <div className="flex justify-between items-center">
                   <h3 className="font-medium">{speaker.name}</h3>
@@ -894,8 +905,37 @@ Based on this data, please provide:
                     ))}
                   </div>
                 </div>
+                <div>
+                  <h4 className="text-sm text-gray-400 mb-1">Mode Excitation</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-green-900/30 rounded p-2">
+                      <div className="text-xs text-green-400 mb-1">Strong ({'>'}70%)</div>
+                      <div className="space-y-0.5">
+                        {strongModes.slice(0, 5).map((m, j) => (
+                          <div key={j} className="text-xs flex justify-between">
+                            <span className="font-mono">({m.n},{m.m},{m.l})</span>
+                            <span>{m.freq.toFixed(0)} Hz <strong>{(m.excitation * 100).toFixed(0)}%</strong></span>
+                          </div>
+                        ))}
+                        {strongModes.length === 0 && <div className="text-xs text-gray-500">None</div>}
+                      </div>
+                    </div>
+                    <div className="bg-gray-800/50 rounded p-2">
+                      <div className="text-xs text-gray-400 mb-1">Weak ({'<'}20%)</div>
+                      <div className="space-y-0.5">
+                        {weakModes.slice(0, 5).map((m, j) => (
+                          <div key={j} className="text-xs flex justify-between">
+                            <span className="font-mono">({m.n},{m.m},{m.l})</span>
+                            <span>{m.freq.toFixed(0)} Hz <strong>{(m.excitation * 100).toFixed(0)}%</strong></span>
+                          </div>
+                        ))}
+                        {weakModes.length === 0 && <div className="text-xs text-gray-500">None</div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            ))}
+            );})}
           </div>
         </div>
         
@@ -909,6 +949,7 @@ Based on this data, please provide:
                 <tr className="text-left text-gray-400 border-b border-gray-700">
                   <th className="p-2">Mode</th>
                   <th className="p-2">Freq</th>
+                  <th className="p-2">Type</th>
                   <th className="p-2">Listening position</th>
                   {speakers.map((s, i) => (
                     <th key={i} className="p-2">{s.name.substring(0, 12)}</th>
@@ -916,10 +957,16 @@ Based on this data, please provide:
                 </tr>
               </thead>
               <tbody>
-                {modalAnalysis.filter(m => m.freq <= 110 && m.type === 'axial').map((m, i) => (
+                {modalAnalysis.filter(m => m.freq <= 120).map((m, i) => (
                   <tr key={i} className="border-b border-gray-700">
                     <td className="p-2 font-mono">({m.n},{m.m},{m.l})</td>
                     <td className="p-2">{m.freq.toFixed(1)} Hz</td>
+                    <td className="p-2">
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        m.type === 'axial' ? 'bg-red-900' :
+                        m.type === 'tangential' ? 'bg-yellow-900' : 'bg-blue-900'
+                      }`}>{m.type}</span>
+                    </td>
                     <td className="p-2">
                       <span className={`px-2 py-0.5 rounded ${
                         m.lpPressure < 0.15 ? 'bg-red-700' :
@@ -956,7 +1003,7 @@ Based on this data, please provide:
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-gray-400">No critical nulls identified in axial modes</p>
+                <p className="text-sm text-gray-400">No critical nulls identified</p>
               )}
             </div>
             <div className="bg-purple-900/30 border border-purple-700 rounded p-4">
@@ -970,7 +1017,7 @@ Based on this data, please provide:
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-gray-400">No critical peaks identified in axial modes</p>
+                <p className="text-sm text-gray-400">No critical peaks identified</p>
               )}
             </div>
           </div>
