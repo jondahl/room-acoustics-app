@@ -39,21 +39,28 @@ const generateModes = (length, width, height, maxFreq, maxOrder = 6) => {
 const calcPressureAtPosition = (x, y, z, mode, room, wallOpenings) => {
   const { n, m, l } = mode;
   const { length, width, height } = room;
-  
+
   let pX = n > 0 ? Math.cos(n * Math.PI * x / length) : 1;
   let pY = m > 0 ? Math.cos(m * Math.PI * y / width) : 1;
   let pZ = l > 0 ? Math.cos(l * Math.PI * z / height) : 1;
-  
-  let pressure = Math.abs(pX * pY * pZ);
-  
-  // Apply wall opening reductions (multiplicative - mode requires reflections from both walls)
+
+  let rawPressure = Math.abs(pX * pY * pZ);
+
+  // Calculate mode strength based on wall openings
+  // Mode requires reflections from both walls - multiplicative
+  let modeStrength = 1.0;
   if (m > 0) {
-    pressure *= (1 - wallOpenings.left / 100) * (1 - wallOpenings.right / 100);
+    modeStrength *= (1 - wallOpenings.left / 100) * (1 - wallOpenings.right / 100);
   }
   if (n > 0) {
-    pressure *= (1 - wallOpenings.front / 100) * (1 - wallOpenings.rear / 100);
+    modeStrength *= (1 - wallOpenings.front / 100) * (1 - wallOpenings.rear / 100);
   }
-  
+
+  // Push pressure toward neutral (0.5) as mode weakens
+  // Full strength: peaks stay at 1, nulls stay at 0
+  // No mode: everything becomes 0.5 (neutral)
+  const pressure = 0.5 + (rawPressure - 0.5) * modeStrength;
+
   return pressure;
 };
 
