@@ -46,16 +46,12 @@ const calcPressureAtPosition = (x, y, z, mode, room, wallOpenings) => {
   
   let pressure = Math.abs(pX * pY * pZ);
   
-  // Apply wall opening reductions
+  // Apply wall opening reductions (multiplicative - mode requires reflections from both walls)
   if (m > 0) {
-    const leftReduction = (1 + (1 - wallOpenings.left / 100)) / 2;
-    const rightReduction = (1 + (1 - wallOpenings.right / 100)) / 2;
-    pressure *= (leftReduction + rightReduction) / 2;
+    pressure *= (1 - wallOpenings.left / 100) * (1 - wallOpenings.right / 100);
   }
   if (n > 0) {
-    const frontReduction = (1 + (1 - wallOpenings.front / 100)) / 2;
-    const rearReduction = (1 + (1 - wallOpenings.rear / 100)) / 2;
-    pressure *= (frontReduction + rearReduction) / 2;
+    pressure *= (1 - wallOpenings.front / 100) * (1 - wallOpenings.rear / 100);
   }
   
   return pressure;
