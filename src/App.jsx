@@ -246,354 +246,56 @@ const scoreSubConfig = (subPositions, modes, room, listener) => {
   };
 };
 
-// Predefined placement strategies
-const PLACEMENT_STRATEGIES = {
-  // ===== SINGLE SUB CONFIGURATIONS =====
-  'single-corner-fl': {
-    name: 'Front Left Corner',
-    subs: 1,
-    description: 'Maximum boundary gain, excites all modes',
-    getPositions: (room) => [{ x: 0.5, y: 0.5, z: 0 }],
-  },
-  'single-corner-fr': {
-    name: 'Front Right Corner',
-    subs: 1,
-    description: 'Maximum boundary gain, excites all modes',
-    getPositions: (room) => [{ x: 0.5, y: room.width - 0.5, z: 0 }],
-  },
-  'single-corner-rl': {
-    name: 'Rear Left Corner',
-    subs: 1,
-    description: 'Maximum boundary gain, excites all modes',
-    getPositions: (room) => [{ x: room.length - 0.5, y: 0.5, z: 0 }],
-  },
-  'single-midwall-front': {
-    name: 'Front Wall Center',
-    subs: 1,
-    description: 'At null for odd width modes (0,1,0), (0,3,0)...',
-    getPositions: (room) => [{ x: 0.5, y: room.width / 2, z: 0 }],
-  },
-  'single-midwall-side': {
-    name: 'Left Wall Center',
-    subs: 1,
-    description: 'At null for odd length modes (1,0,0), (3,0,0)...',
-    getPositions: (room) => [{ x: room.length / 2, y: 0.5, z: 0 }],
-  },
-  'single-quarter-front': {
-    name: 'Front Wall 1/4',
-    subs: 1,
-    description: 'At null for 2nd width mode (0,2,0)',
-    getPositions: (room) => [{ x: 0.5, y: room.width * 0.25, z: 0 }],
-  },
-  'single-quarter-side': {
-    name: 'Left Wall 1/4',
-    subs: 1,
-    description: 'At null for 2nd length mode (2,0,0)',
-    getPositions: (room) => [{ x: room.length * 0.25, y: 0.5, z: 0 }],
-  },
-
-  // ===== DUAL SUB CONFIGURATIONS =====
-  'dual-front-corners': {
-    name: 'Dual Front Corners',
-    subs: 2,
-    description: 'Cancels odd width modes via phase opposition',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: 0.5, y: room.width - 0.5, z: 0 },
-    ],
-  },
-  'dual-opposite-corners': {
-    name: 'Opposite Corners (Diagonal)',
-    subs: 2,
-    description: 'Cancels all odd-sum modes (n+m+l odd)',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
-    ],
-  },
-  'dual-front-rear-corners-left': {
-    name: 'Front & Rear Left Corners',
-    subs: 2,
-    description: 'Cancels odd length modes',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: room.length - 0.5, y: 0.5, z: 0 },
-    ],
-  },
-  'dual-front-rear-midwall': {
-    name: 'Front & Rear Midwall',
-    subs: 2,
-    description: 'At nulls for odd width modes, cancels odd length',
-    getPositions: (room) => [
-      { x: 0.5, y: room.width / 2, z: 0 },
-      { x: room.length - 0.5, y: room.width / 2, z: 0 },
-    ],
-  },
-  'dual-side-midwalls': {
-    name: 'Left & Right Midwall',
-    subs: 2,
-    description: 'At nulls for odd length modes, cancels odd width',
-    getPositions: (room) => [
-      { x: room.length / 2, y: 0.5, z: 0 },
-      { x: room.length / 2, y: room.width - 0.5, z: 0 },
-    ],
-  },
-  'dual-corner-plus-midwall': {
-    name: 'Corner + Opposite Midwall',
-    subs: 2,
-    description: 'Corner for output, midwall at null for odd modes',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width / 2, z: 0 },
-    ],
-  },
-  'dual-front-quarters': {
-    name: 'Front Wall 1/4 & 3/4',
-    subs: 2,
-    description: 'Symmetric, nulls for 2nd width mode',
-    getPositions: (room) => [
-      { x: 0.5, y: room.width * 0.25, z: 0 },
-      { x: 0.5, y: room.width * 0.75, z: 0 },
-    ],
-  },
-  'dual-corner-plus-quarter': {
-    name: 'Corner + 1/4 Wall',
-    subs: 2,
-    description: 'Corner for output, 1/4 position for mode control',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: room.length * 0.25, y: room.width - 0.5, z: 0 },
-    ],
-  },
-
-  // ===== TRIPLE SUB CONFIGURATIONS =====
-  'triple-front-wall-distributed': {
-    name: 'Front Wall Distributed',
-    subs: 3,
-    description: 'Three across front wall at 1/4, 1/2, 3/4',
-    getPositions: (room) => [
-      { x: 0.5, y: room.width * 0.25, z: 0 },
-      { x: 0.5, y: room.width * 0.5, z: 0 },
-      { x: 0.5, y: room.width * 0.75, z: 0 },
-    ],
-  },
-  'triple-front-corners-rear-mid': {
-    name: 'Front Corners + Rear Midwall',
-    subs: 3,
-    description: 'Two front corners + rear center for length mode control',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: 0.5, y: room.width - 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width / 2, z: 0 },
-    ],
-  },
-  'triple-corner-plus-midwalls': {
-    name: 'Corner + Two Midwalls',
-    subs: 3,
-    description: 'Corner for output, midwalls for mode control',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: 0.5, y: room.width / 2, z: 0 },
-      { x: room.length / 2, y: 0.5, z: 0 },
-    ],
-  },
-  'triple-three-corners': {
-    name: 'Three Corners',
-    subs: 3,
-    description: 'Three corners for asymmetric cancellation',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: 0.5, y: room.width - 0.5, z: 0 },
-      { x: room.length - 0.5, y: 0.5, z: 0 },
-    ],
-  },
-  'triple-corner-plus-quarters': {
-    name: 'Corner + 1/4 Positions',
-    subs: 3,
-    description: 'Corner plus two 1/4 wall positions',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: room.length * 0.25, y: room.width - 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width * 0.25, z: 0 },
-    ],
-  },
-  'triple-front-mid-plus-rear-corners': {
-    name: 'Front Midwall + Rear Corners',
-    subs: 3,
-    description: 'Front center + both rear corners',
-    getPositions: (room) => [
-      { x: 0.5, y: room.width / 2, z: 0 },
-      { x: room.length - 0.5, y: 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
-    ],
-  },
-
-  // ===== QUAD SUB CONFIGURATIONS =====
-  'quad-corners': {
-    name: 'Four Corners',
-    subs: 4,
-    description: 'Cancels all odd-index modes, best seat consistency',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: 0.5, y: room.width - 0.5, z: 0 },
-      { x: room.length - 0.5, y: 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
-    ],
-  },
-  'quad-midwalls': {
-    name: 'Four Midwalls',
-    subs: 4,
-    description: 'Midpoint of each wall, nulls many axial modes',
-    getPositions: (room) => [
-      { x: 0.5, y: room.width / 2, z: 0 },
-      { x: room.length - 0.5, y: room.width / 2, z: 0 },
-      { x: room.length / 2, y: 0.5, z: 0 },
-      { x: room.length / 2, y: room.width - 0.5, z: 0 },
-    ],
-  },
-  'quad-double-bass-array': {
-    name: 'Double Bass Array (Front)',
-    subs: 4,
-    description: 'Four subs across front wall for plane wave',
-    getPositions: (room) => [
-      { x: 0.5, y: room.width * 0.125, z: 0 },
-      { x: 0.5, y: room.width * 0.375, z: 0 },
-      { x: 0.5, y: room.width * 0.625, z: 0 },
-      { x: 0.5, y: room.width * 0.875, z: 0 },
-    ],
-  },
-  'quad-front-corners-rear-midwalls': {
-    name: 'Front Corners + Rear 1/4s',
-    subs: 4,
-    description: 'Corners in front, 1/4 positions in rear',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: 0.5, y: room.width - 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width * 0.25, z: 0 },
-      { x: room.length - 0.5, y: room.width * 0.75, z: 0 },
-    ],
-  },
-  'quad-corners-plus-front-mid': {
-    name: 'Two Corners + Front Mids',
-    subs: 4,
-    description: 'Opposite corners plus front wall midpoints',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
-      { x: 0.5, y: room.width * 0.33, z: 0 },
-      { x: 0.5, y: room.width * 0.67, z: 0 },
-    ],
-  },
-  'quad-quarter-positions': {
-    name: 'Four 1/4 Positions',
-    subs: 4,
-    description: '1/4 and 3/4 on front and rear walls',
-    getPositions: (room) => [
-      { x: 0.5, y: room.width * 0.25, z: 0 },
-      { x: 0.5, y: room.width * 0.75, z: 0 },
-      { x: room.length - 0.5, y: room.width * 0.25, z: 0 },
-      { x: room.length - 0.5, y: room.width * 0.75, z: 0 },
-    ],
-  },
-  'quad-asymmetric': {
-    name: 'Asymmetric Quad',
-    subs: 4,
-    description: 'Mixed corners and midwall for complex cancellation',
-    getPositions: (room) => [
-      { x: 0.5, y: 0.5, z: 0 },
-      { x: 0.5, y: room.width / 2, z: 0 },
-      { x: room.length - 0.5, y: room.width - 0.5, z: 0 },
-      { x: room.length / 2, y: 0.5, z: 0 },
-    ],
-  },
+// 16 floor positions for subwoofer placement (all at z=0, offset 0.5ft from walls)
+const FLOOR_POSITIONS = {
+  // Corners (4)
+  FL:   { name: 'Front-Left Corner',           getPos: (r) => ({ x: 0.5, y: 0.5, z: 0 }) },
+  FR:   { name: 'Front-Right Corner',          getPos: (r) => ({ x: 0.5, y: r.width - 0.5, z: 0 }) },
+  RL:   { name: 'Rear-Left Corner',            getPos: (r) => ({ x: r.length - 0.5, y: 0.5, z: 0 }) },
+  RR:   { name: 'Rear-Right Corner',           getPos: (r) => ({ x: r.length - 0.5, y: r.width - 0.5, z: 0 }) },
+  // Front Wall (3)
+  F14:  { name: 'Front Wall 1/4 from Left',    getPos: (r) => ({ x: 0.5, y: r.width * 0.25, z: 0 }) },
+  FM:   { name: 'Front Wall Center',           getPos: (r) => ({ x: 0.5, y: r.width * 0.5, z: 0 }) },
+  F34:  { name: 'Front Wall 3/4 from Left',    getPos: (r) => ({ x: 0.5, y: r.width * 0.75, z: 0 }) },
+  // Rear Wall (3)
+  R14:  { name: 'Rear Wall 1/4 from Left',     getPos: (r) => ({ x: r.length - 0.5, y: r.width * 0.25, z: 0 }) },
+  RM:   { name: 'Rear Wall Center',            getPos: (r) => ({ x: r.length - 0.5, y: r.width * 0.5, z: 0 }) },
+  R34:  { name: 'Rear Wall 3/4 from Left',     getPos: (r) => ({ x: r.length - 0.5, y: r.width * 0.75, z: 0 }) },
+  // Left Wall (3)
+  L14:  { name: 'Left Wall 1/4 from Front',    getPos: (r) => ({ x: r.length * 0.25, y: 0.5, z: 0 }) },
+  LM:   { name: 'Left Wall Center',            getPos: (r) => ({ x: r.length * 0.5, y: 0.5, z: 0 }) },
+  L34:  { name: 'Left Wall 3/4 from Front',    getPos: (r) => ({ x: r.length * 0.75, y: 0.5, z: 0 }) },
+  // Right Wall (3)
+  Ri14: { name: 'Right Wall 1/4 from Front',   getPos: (r) => ({ x: r.length * 0.25, y: r.width - 0.5, z: 0 }) },
+  RiM:  { name: 'Right Wall Center',           getPos: (r) => ({ x: r.length * 0.5, y: r.width - 0.5, z: 0 }) },
+  Ri34: { name: 'Right Wall 3/4 from Front',   getPos: (r) => ({ x: r.length * 0.75, y: r.width - 0.5, z: 0 }) },
 };
 
-// Grid search for optimal positions
-const optimizeSubPositions = (numSubs, modes, room, listener, options = {}) => {
-  const {
-    gridResolution = 1.5, // feet
-    symmetryConstraint = true,
-  } = options;
-
-  // Generate grid positions (along walls only for practical placement)
-  const positions = [];
-
-  // Front wall positions
-  for (let y = 0.5; y < room.width; y += gridResolution) {
-    positions.push({ x: 0.5, y, z: 0, wall: 'front' });
-  }
-  // Rear wall positions
-  for (let y = 0.5; y < room.width; y += gridResolution) {
-    positions.push({ x: room.length - 0.5, y, z: 0, wall: 'rear' });
-  }
-  // Left wall positions
-  for (let x = gridResolution; x < room.length - gridResolution; x += gridResolution) {
-    positions.push({ x, y: 0.5, z: 0, wall: 'left' });
-  }
-  // Right wall positions
-  for (let x = gridResolution; x < room.length - gridResolution; x += gridResolution) {
-    positions.push({ x, y: room.width - 0.5, z: 0, wall: 'right' });
-  }
-
-  let bestScore = -Infinity;
-  let bestConfig = null;
-
-  if (numSubs === 1) {
-    // Test all positions
-    for (const pos of positions) {
-      const score = scoreSubConfig([pos], modes, room, listener);
-      if (score.overall > bestScore) {
-        bestScore = score.overall;
-        bestConfig = { positions: [pos], score };
-      }
-    }
-  } else if (numSubs === 2) {
-    // Test pairs (with optional symmetry)
-    const frontHalf = positions.filter(p => p.x < room.length / 2 || p.wall === 'front');
-
-    for (let i = 0; i < frontHalf.length; i++) {
-      const pos1 = frontHalf[i];
-
-      // If symmetry, only test symmetric counterpart
-      if (symmetryConstraint) {
-        const pos2 = {
-          x: pos1.wall === 'front' ? pos1.x : room.length - pos1.x,
-          y: room.width - pos1.y,
-          z: 0,
-        };
-        const score = scoreSubConfig([pos1, pos2], modes, room, listener);
-        if (score.overall > bestScore) {
-          bestScore = score.overall;
-          bestConfig = { positions: [pos1, pos2], score };
-        }
-      } else {
-        // Test all combinations
-        for (let j = i + 1; j < positions.length; j++) {
-          const pos2 = positions[j];
-          const score = scoreSubConfig([pos1, pos2], modes, room, listener);
-          if (score.overall > bestScore) {
-            bestScore = score.overall;
-            bestConfig = { positions: [pos1, pos2], score };
-          }
-        }
-      }
-    }
-  } else if (numSubs === 4) {
-    // For 4 subs, test predefined configurations + symmetric variations
-    const quadStrategies = Object.entries(PLACEMENT_STRATEGIES)
-      .filter(([, s]) => s.subs === 4);
-
-    for (const [, strategy] of quadStrategies) {
-      const subPositions = strategy.getPositions(room);
-      const score = scoreSubConfig(subPositions, modes, room, listener);
-      if (score.overall > bestScore) {
-        bestScore = score.overall;
-        bestConfig = { positions: subPositions, score };
-      }
+// Generate all k-combinations from an array
+const combinations = (arr, k) => {
+  if (k === 1) return arr.map(x => [x]);
+  if (k === arr.length) return [arr];
+  const result = [];
+  for (let i = 0; i <= arr.length - k; i++) {
+    const head = arr[i];
+    const tailCombos = combinations(arr.slice(i + 1), k - 1);
+    for (const tail of tailCombos) {
+      result.push([head, ...tail]);
     }
   }
+  return result;
+};
 
-  return bestConfig;
+// Generate all configurations for N subs
+const generateAllConfigurations = (numSubs, room) => {
+  const positionKeys = Object.keys(FLOOR_POSITIONS);
+  const combos = combinations(positionKeys, numSubs);
+
+  return combos.map(keys => ({
+    keys,
+    name: keys.map(k => FLOOR_POSITIONS[k].name).join(' + '),
+    positions: keys.map(k => FLOOR_POSITIONS[k].getPos(room)),
+  }));
 };
 
 // ============== UI COMPONENTS ==============
@@ -797,7 +499,6 @@ export default function RoomAcousticsApp() {
   const [showSubOptimizer, setShowSubOptimizer] = useState(false);
   const [subOptimizerConfig, setSubOptimizerConfig] = useState({
     numSubs: 2,
-    symmetryConstraint: true,
   });
   const [expandedStrategies, setExpandedStrategies] = useState(new Set());
 
@@ -902,29 +603,21 @@ export default function RoomAcousticsApp() {
 
     const modesForOptimization = modes.filter(m => m.freq <= 120);
 
-    // Evaluate strategies filtered by numSubs
-    const strategyResults = Object.entries(PLACEMENT_STRATEGIES)
-      .filter(([, strategy]) => strategy.subs === subOptimizerConfig.numSubs)
-      .map(([key, strategy]) => {
-        const positions = strategy.getPositions(room);
-        const score = scoreSubConfig(positions, modesForOptimization, room, listener);
-        return { key, strategy, positions, score };
-      })
-      .sort((a, b) => b.score.overall - a.score.overall);
+    // Generate and score ALL combinations for selected numSubs
+    const allConfigs = generateAllConfigurations(subOptimizerConfig.numSubs, room);
 
-    // Run grid search optimization for selected numSubs
-    const optimizedConfig = optimizeSubPositions(
-      subOptimizerConfig.numSubs,
-      modesForOptimization,
-      room,
-      listener,
-      { symmetryConstraint: subOptimizerConfig.symmetryConstraint }
-    );
+    const scoredConfigs = allConfigs.map(config => ({
+      ...config,
+      score: scoreSubConfig(config.positions, modesForOptimization, room, listener),
+    }));
+
+    // Sort by score, take top 20
+    scoredConfigs.sort((a, b) => b.score.overall - a.score.overall);
 
     return {
-      strategyResults,
-      optimizedConfig,
-      bestStrategy: strategyResults[0],
+      totalEvaluated: allConfigs.length,
+      topConfigs: scoredConfigs.slice(0, 20),
+      bestConfig: scoredConfigs[0],
     };
   }, [showSubOptimizer, subOptimizerConfig, room, listener, modes]);
 
@@ -1615,19 +1308,6 @@ Based on this data, please provide:
                     </div>
                   </div>
 
-                  {/* Symmetry Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={subOptimizerConfig.symmetryConstraint}
-                      onChange={e => setSubOptimizerConfig({
-                        ...subOptimizerConfig,
-                        symmetryConstraint: e.target.checked
-                      })}
-                      className="w-4 h-4 rounded"
-                    />
-                    <span className="text-sm">Enforce Left/Right Symmetry (Grid Search)</span>
-                  </label>
                 </div>
               </div>
 
@@ -1635,31 +1315,35 @@ Based on this data, please provide:
               {subOptimizerResults && (
                 <div className="space-y-4">
                   {/* Strategy Comparison Table */}
-                  <h3 className="font-medium">{subOptimizerConfig.numSubs}-Sub Strategies (click row to expand)</h3>
+                  <h3 className="font-medium">
+                    Top {subOptimizerConfig.numSubs}-Sub Configurations
+                    <span className="text-gray-400 font-normal ml-2">(evaluated {subOptimizerResults.totalEvaluated} combinations)</span>
+                  </h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-gray-400 border-b border-gray-700">
                           <th className="p-2">Rank</th>
-                          <th className="p-2">Strategy</th>
+                          <th className="p-2">Configuration</th>
                           <th className="p-2">FR Preview</th>
                           <th className="p-2">Peak-to-Peak</th>
                           <th className="p-2">Score</th>
-                          <th className="p-2">Positions</th>
+                          <th className="p-2">Coordinates</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {subOptimizerResults.strategyResults.map((result, i) => {
-                          const isExpanded = expandedStrategies.has(result.key);
+                        {subOptimizerResults.topConfigs.map((result, i) => {
+                          const configKey = result.keys.join('+');
+                          const isExpanded = expandedStrategies.has(configKey);
                           return (
-                          <React.Fragment key={result.key}>
+                          <React.Fragment key={configKey}>
                             <tr
                               onClick={() => {
                                 const newExpanded = new Set(expandedStrategies);
                                 if (isExpanded) {
-                                  newExpanded.delete(result.key);
+                                  newExpanded.delete(configKey);
                                 } else {
-                                  newExpanded.add(result.key);
+                                  newExpanded.add(configKey);
                                 }
                                 setExpandedStrategies(newExpanded);
                               }}
@@ -1669,9 +1353,8 @@ Based on this data, please provide:
                               <td className="p-2">
                                 <div className="font-medium flex items-center gap-1">
                                   <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
-                                  {result.strategy.name}
+                                  {result.name}
                                 </div>
-                                <div className="text-xs text-gray-400 ml-4">{result.strategy.description}</div>
                               </td>
                               <td className="p-2">
                                 <FRCurvePreview fr={result.score.fr} />
@@ -1750,27 +1433,26 @@ Based on this data, please provide:
                     </table>
                   </div>
 
-                  {/* Best Results Summary */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Best Strategy */}
-                    {subOptimizerResults.bestStrategy && (
-                      <div className="bg-green-900/30 border border-green-700 rounded p-4">
-                        <h4 className="font-medium text-green-300 mb-2">
-                          Best Strategy: {subOptimizerResults.bestStrategy.strategy.name}
-                        </h4>
+                  {/* Best Configuration Summary */}
+                  {subOptimizerResults.bestConfig && (
+                    <div className="bg-green-900/30 border border-green-700 rounded p-4">
+                      <h4 className="font-medium text-green-300 mb-2">
+                        Best Configuration: {subOptimizerResults.bestConfig.name}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2 text-sm">
                           <div>
                             <span className="text-gray-400">Score:</span>{' '}
-                            <strong>{subOptimizerResults.bestStrategy.score.overall.toFixed(0)}/100</strong>
+                            <strong>{subOptimizerResults.bestConfig.score.overall.toFixed(0)}/100</strong>
                           </div>
                           <div>
                             <span className="text-gray-400">Peak-to-Peak:</span>{' '}
-                            ±{(subOptimizerResults.bestStrategy.score.peakToPeak / 2).toFixed(1)} dB
+                            ±{(subOptimizerResults.bestConfig.score.peakToPeak / 2).toFixed(1)} dB
                           </div>
                           <div>
                             <span className="text-gray-400">Positions:</span>
-                            <ul className="mt-1 font-mono">
-                              {subOptimizerResults.bestStrategy.positions.map((pos, i) => (
+                            <ul className="mt-1 font-mono text-xs">
+                              {subOptimizerResults.bestConfig.positions.map((pos, i) => (
                                 <li key={i}>
                                   Sub {i + 1}: {pos.x.toFixed(1)}' from front, {pos.y.toFixed(1)}' from left
                                 </li>
@@ -1778,41 +1460,13 @@ Based on this data, please provide:
                             </ul>
                           </div>
                         </div>
-                      </div>
-                    )}
-
-                    {/* Optimized Placement */}
-                    {subOptimizerResults.optimizedConfig && (
-                      <div className="bg-blue-900/30 border border-blue-700 rounded p-4">
-                        <h4 className="font-medium text-blue-300 mb-2">
-                          Grid Search Optimized
-                        </h4>
-                        <div className="space-y-2 text-sm">
-                          <div>
-                            <span className="text-gray-400">Score:</span>{' '}
-                            <strong>{subOptimizerResults.optimizedConfig.score.overall.toFixed(0)}/100</strong>
-                          </div>
-                          <div>
-                            <span className="text-gray-400">Peak-to-Peak:</span>{' '}
-                            ±{(subOptimizerResults.optimizedConfig.score.peakToPeak / 2).toFixed(1)} dB
-                          </div>
-                          <div>
-                            <span className="text-gray-400">Positions:</span>
-                            <ul className="mt-1 font-mono">
-                              {subOptimizerResults.optimizedConfig.positions.map((pos, i) => (
-                                <li key={i}>
-                                  Sub {i + 1}: {pos.x.toFixed(1)}' from front, {pos.y.toFixed(1)}' from left
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="mt-2">
-                            <FRCurvePreview fr={subOptimizerResults.optimizedConfig.score.fr} width={200} height={60} />
-                          </div>
+                        <div>
+                          <span className="text-gray-400 text-sm">Predicted FR:</span>
+                          <FRCurvePreview fr={subOptimizerResults.bestConfig.score.fr} width={200} height={60} />
                         </div>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {/* Explanation */}
                   <div className="bg-gray-700 rounded p-4">
