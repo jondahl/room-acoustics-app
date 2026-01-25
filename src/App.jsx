@@ -119,7 +119,7 @@ const calcSBIR = (speaker, room) => {
   ];
   
   return distances
-    .filter(d => d.distance > 0.1 && d.distance < 15)
+    .filter(d => d.distance > 0.1)
     .map(d => ({
       ...d,
       freq: SPEED_OF_SOUND / (2 * d.distance),
@@ -709,7 +709,7 @@ ${modalAnalysis.slice(0, 30).map(m =>
 
 ## SBIR Analysis by Speaker
 ${speakerAnalysis.map(s => `### ${s.name}
-${s.sbir.slice(0, 5).map(sb => `- ${sb.boundary}: ${sb.distance.toFixed(1)} ft → ${sb.freq.toFixed(0)} Hz null`).join('\n')}`).join('\n\n')}
+${s.sbir.map(sb => `- ${sb.boundary}: ${sb.distance.toFixed(1)} ft → ${sb.freq.toFixed(0)} Hz null`).join('\n')}`).join('\n\n')}
 
 ## Analysis Request
 Based on this data, please provide:
@@ -1118,7 +1118,7 @@ Based on this data, please provide:
                 <div>
                   <h4 className="text-sm text-gray-400 mb-1">SBIR Cancellation Frequencies</h4>
                   <div className="space-y-1">
-                    {speaker.sbir.slice(0, 5).map((sb, j) => (
+                    {speaker.sbir.map((sb, j) => (
                       <div key={j} className="flex justify-between text-sm">
                         <span>{sb.boundary}</span>
                         <span>{sb.distance.toFixed(1)} ft → <strong>{sb.freq.toFixed(0)} Hz</strong></span>
